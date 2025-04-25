@@ -2,8 +2,8 @@ import tkinter as tk
 import time
 
 
-ŠIRINA = 1300
-VISINA = 500  # prozor
+ŠIRINA = 1900
+VISINA = 520  # prozor
 ODBIJANJE = 0.7  # koeficijent odbijanja
 R = 0.1  # m poluprečnik lopte
 
@@ -60,8 +60,8 @@ def run_simulacija():
     else:
         odbijanje = 0.7
 
-    dt_osnovni = 0.02 #azuriranje na svakih 0.02 sec
-    dt = dt_osnovni * (1.0 / brzina_simulacije)
+    dt_osnovni = 0.02   #azuriranje na svakih 0.02 sec
+    dt = dt_osnovni * brzina_simulacije 
     r = masa * 3 + 10  # prečnik propor. težini - gpt predlozio formulu
 
     vreme_poslednjeg = time.time()
@@ -76,10 +76,13 @@ def run_simulacija():
 
         sada = time.time()
         proteklo = sada - vreme_poslednjeg
-        if proteklo < dt:
+        if proteklo < dt_osnovni:
             root.after(10, simulacija_petlja)
             return
         vreme_poslednjeg = sada
+
+        brzina_simulacije = brzina_var.get()
+        dt = dt_osnovni * brzina_simulacije
 
         # izracunavanje ubrzanja
         ax = -otpor * brzina_x / masa
@@ -126,38 +129,51 @@ def run_simulacija():
 # Glavni prozor
 root = tk.Tk()
 root.title("Simulacija kretanja lopte")
-root.geometry(f"{ŠIRINA}x{VISINA+200}")
+root.attributes("-fullscreen", True)
+root.bind("<Escape>", lambda e: root.attributes("-fullscreen", False))
 
 # Platno
 canvas = tk.Canvas(root, width=ŠIRINA, height=VISINA, bg="lightblue")
-canvas.pack()
+canvas.pack(fill="both", expand=True)
 
 # Kontrole
+# Glavni frame
 frame = tk.Frame(root)
-frame.pack(pady=10)
+frame.pack(fill="x", pady=10)
 
-tk.Label(frame, text="Težina lopte").grid(row=0, column=0)
+# Unutrašnji frame za kontrole
+controls_frame = tk.Frame(frame)
+controls_frame.pack(pady=10)
+
+# Prva kolona (kolona 0)
+tk.Label(controls_frame, text="Težina lopte").grid(row=0, column=0, padx=10, pady=0)
 težina_var = tk.DoubleVar(value=1.0)
-tk.Scale(frame, from_=0.1, to=10.0, resolution=0.1, orient='horizontal', variable=težina_var).grid(row=0, column=1)
+tk.Scale(controls_frame, from_=0.1, to=10.0, resolution=0.1, orient='horizontal', variable=težina_var).grid(row=1, column=0, padx=10, pady=0)
 
-tk.Label(frame, text="Otpor vazduha").grid(row=1, column=0)
+tk.Label(controls_frame, text="Otpor vazduha").grid(row=2, column=0, padx=10, pady=0)
 otpor_var = tk.DoubleVar(value=0.1)
-tk.Scale(frame, from_=0.0, to=2.0, resolution=0.05, orient='horizontal', variable=otpor_var).grid(row=1, column=1)
+tk.Scale(controls_frame, from_=0.0, to=2.0, resolution=0.05, orient='horizontal', variable=otpor_var).grid(row=3, column=0, padx=10, pady=0)
 
-tk.Label(frame, text="Gravitacija").grid(row=2, column=0)
+# Druga kolona (kolona 2)
+tk.Label(controls_frame, text="Gravitacija").grid(row=0, column=2, padx=10, pady=0)
 gravitacija_var = tk.DoubleVar(value=9.81)
-tk.Scale(frame, from_=0.1, to=20.0, resolution=0.1, orient='horizontal', variable=gravitacija_var).grid(row=2, column=1)
+tk.Scale(controls_frame, from_=0.1, to=20.0, resolution=0.1, orient='horizontal', variable=gravitacija_var).grid(row=1, column=2, padx=10, pady=0)
 
-tk.Label(frame, text="Brzina simulacije").grid(row=3, column=0)
+tk.Label(controls_frame, text="Brzina simulacije").grid(row=2, column=2, padx=10, pady=0)
 brzina_var = tk.DoubleVar(value=1.0)
-tk.Scale(frame, from_=0.1, to=3.0, resolution=0.1, orient='horizontal', variable=brzina_var).grid(row=3, column=1)
+tk.Scale(controls_frame, from_=0.1, to=3.0, resolution=0.1, orient='horizontal', variable=brzina_var).grid(row=3, column=2, padx=10, pady=0)
 
-tk.Button(frame, text="Pokreni simulaciju", command=pokreni_simulaciju).grid(row=4, column=0, pady=10)
-tk.Button(frame, text="Restart", command=restart_simulacije).grid(row=4, column=1, pady=10)
-
-tk.Label(frame, text="Vrsta podloge").grid(row = 5, column=0)
+# Treća kolona (kolona 4)
+tk.Label(controls_frame, text="Vrsta podloge").grid(row=0, column=4, padx=10, pady=0)
 podloga_var = tk.StringVar(value="Normalna")
-tk.OptionMenu(frame, podloga_var, "Normalna", "Trambolina", "Pesak", "Led").grid(row=5, column=1)
+tk.OptionMenu(controls_frame, podloga_var, "Normalna", "Trambolina", "Pesak", "Led").grid(row=1, column=4, padx=10, pady=0)
+
+tk.Button(controls_frame, text="Pokreni simulaciju", command=pokreni_simulaciju).grid(row=2, column=4, pady=10)
+tk.Button(controls_frame, text="Restart", command=restart_simulacije).grid(row=3, column=4, pady=10)
+
+# Konfigurišemo širinu praznih stubova 1 i 3 da naprave prostor
+controls_frame.grid_columnconfigure(1, minsize=100)  # prostor između 1. i 2. kolone
+controls_frame.grid_columnconfigure(3, minsize=100)  # prostor između 2. i 3. kolone
 
 root.bind("<space>", toggle_simulacija) #space moze da prekine simul
 
