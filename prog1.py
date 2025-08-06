@@ -4,7 +4,15 @@ import math
 import os
 import pygame
 from PIL import Image, ImageTk
+from numpy import array
 
+# Globalne promenljive
+simulacija_aktivna = False
+simulacija_pauzirana = False
+R = 0.1  # m
+
+def skaliraj_m_u_px(m):
+    return m * 100          
 
 pygame.init()
 pygame.mixer.init()
@@ -37,6 +45,9 @@ h_scrollbar.pack(side='bottom', fill='x')
 canvas_width = screen_width * 2
 canvas_height = upper_height
 
+ŠIRINA = canvas_width
+VISINA = canvas_height
+
 canvas = tk.Canvas(scroll_frame, bg="lightblue", width=screen_width, height=canvas_height,
                    xscrollcommand=h_scrollbar.set)
 canvas.pack(side='top', fill='both', expand=True)
@@ -45,7 +56,6 @@ h_scrollbar.config(command=canvas.xview)
 canvas.config(scrollregion=(0, 0, canvas_width, canvas_height))
 
 # Mapa podloga i njihovih slika
-# Mapa podloga i njihovih fajlova (relativno u odnosu na ovaj .py fajl)
 background_images = {
     "Pesak": "pesak.png",
     "Led": "led.png",
@@ -90,16 +100,6 @@ for i in range(6):
     col = ctk.CTkFrame(lower_frame, fg_color="white")
     col.pack(side="left", fill="both", expand=True, padx=10, pady=10)
     columns.append(col)
-
-# Globalne promenljive
-simulacija_aktivna = False
-simulacija_pauzirana = False
-ŠIRINA = canvas_width
-VISINA = canvas_height
-R = 0.1  # m
-
-def skaliraj_m_u_px(m):
-    return m * 100
 
 def create_slider_with_label(parent, text, from_, to, steps):
     frame = ctk.CTkFrame(parent, fg_color="white")
@@ -161,11 +161,11 @@ def restart_simulacije():
     simulacija_aktivna = False
     simulacija_pauzirana = False
     canvas.delete("lopta")
-    pauza_dugme.configure(text="Pauza")
+    canvas.delete("putanja")
 
 restart_dugme = ctk.CTkButton(columns[4], text="Restart", fg_color="#e4ed51", text_color="black",
     corner_radius=10, height=50, font=ctk.CTkFont(size=14, weight="bold"), command=restart_simulacije)
-restart_dugme.pack(fill="x", pady=(0,10))
+restart_dugme.pack(fill="x", pady=(30,10))
 
 def pauziraj_simulaciju():
     global simulacija_pauzirana, simulacija_aktivna
@@ -182,84 +182,125 @@ pauza_dugme = ctk.CTkButton(columns[4], text="Pauza", fg_color="#f5a623", text_c
 pauza_dugme.pack(fill="x")
 
 
-
 # Simulacija
 def run_simulacija():
     global simulacija_aktivna
     if not simulacija_aktivna or simulacija_pauzirana:
         return
 
-    # Prvi put inicijalizacija atributa funkcije
+    # Inicijalizacija ako ne postoji
     if not hasattr(run_simulacija, "x"):
-        run_simulacija.x = 1.0
-        run_simulacija.y = 0.5
+        run_simulacija.x = 1.0  # Početna x pozicija
+        run_simulacija.y = 4.0  # Povećana početna y pozicija 
         run_simulacija.vx = 2.0
         run_simulacija.vy = 0.0
         run_simulacija.trag = []
-
+    
     masa = težina_slider.get()
     otpor = otpor_slider.get()
     g = gravitacija_slider.get()
     brzina_sim = brzina_slider.get()
     podloga = surface_option.get()
-
+    
+    # Spring konstante i koeficijenti odbijanja
     if podloga == "Ravna povrsina":
-        odbijanje = 0.9
+        k = 1000.0
+        odbijanje = 0.8
     elif podloga == "Pesak":
-        odbijanje = 0.3
+        k = 500.0
+        odbijanje = 0.4
     elif podloga == "Trambolina":
-        odbijanje = 1.05
-    elif podloga == "Led":
+        k = 200.0
         odbijanje = 0.95
-    else:
+    elif podloga == "Led":
+        k = 1500.0
         odbijanje = 0.9
-
+    
     r_px = skaliraj_m_u_px(R)
-    dt_osnovni = 0.01
+    dt_osnovni = 0.001
     dt = dt_osnovni * brzina_sim
-
+    
     x = run_simulacija.x
     y = run_simulacija.y
     vx = run_simulacija.vx
     vy = run_simulacija.vy
     trag = run_simulacija.trag
-
-    Fg = masa * g
+    
+    # Računanje sila
+    Fg = array([0, -masa * g])  # Gravitacija
+    
+    # Otpor vazduha
     brzina = math.hypot(vx, vy)
-    Fd = otpor * brzina ** 2
-    ax = -Fd * (vx / brzina) / masa if brzina != 0 else 0
-    ay = g - Fd * (vy / brzina) / masa if brzina != 0 else g
-
+    if brzina > 0:
+        Fd = -otpor * brzina * array([vx, vy])
+    else:
+        Fd = array([0, 0])
+    
+    # Normalna sila
+    if y <= R:  # Kontakt sa podlogom
+        N = array([0, k * (R - y)])
+        if vy < 0: 
+            N[1] -= 0.1 * masa * abs(vy)
+    else:
+        N = array([0, 0])
+    
+    # Ukupna sila i ubrzanje
+    Fnet = Fg + Fd + N
+    ax = Fnet[0] / masa
+    ay = Fnet[1] / masa
+    
+    # Ažuriranje pozicije i brzine
     vx += ax * dt
     vy += ay * dt
-
     x += vx * dt
-    y += vy * dt  
+    y += vy * dt
 
-    if y + R > VISINA / 100:
-        #bounce_sound.play()
-        y = VISINA / 100 - R
+    if not hasattr(run_simulacija, "previously_bouncing"):
+        run_simulacija.previously_bouncing = False
+    
+    # Kolizija sa podlogom
+    if y < R:
+        if not run_simulacija.previously_bouncing:
+            bounce_sound.play()
+        run_simulacija.previously_bouncing = True
+        y = R
         vy = -vy * odbijanje
-        if abs(vy) < 0.2:
-            simulacija_aktivna = False
-            return
-
+        vx *= 0.9
+    else:
+        run_simulacija.previously_bouncing = False
+    
+    # Čuvanje stanja
     run_simulacija.x = x
     run_simulacija.y = y
     run_simulacija.vx = vx
     run_simulacija.vy = vy
-    run_simulacija.trag = trag
-
-    canvas.delete("lopta")
+    
+    # Konverzija u piksele
     x_px = skaliraj_m_u_px(x)
-    y_px = skaliraj_m_u_px(y)
-    trag.append((x_px, y_px))
+    y_px = skaliraj_m_u_px(VISINA/100 - y)  # y=0 je pod
+    
+    # Dodavanje nove tačke u trag
+    if len(trag) == 0 or (x_px, y_px) != trag[-1]:
+        trag.append((x_px, y_px))
+    run_simulacija.trag = trag
+    
+    # Crtanje (samo dodajemo novi segment putanje)
+    if len(trag) > 1:
+        canvas.create_line(trag[-2][0], trag[-2][1], trag[-1][0], trag[-1][1],
+                         fill="blue", tags="putanja", width=2)
+    
+    # Crtanje lopte (brišemo samo loptu)
+    canvas.delete("lopta")
+    canvas.create_oval(x_px - r_px, y_px - r_px, 
+                      x_px + r_px, y_px + r_px, 
+                      fill="red", tags="lopta")
+    
+    # Zaustavljanje zvuka ako je lopta stala
+    if math.hypot(vx, vy) < 0.1 and y <= R:
+        pygame.mixer.stop()
 
-    for i in range(1, len(trag)):
-        canvas.create_line(*trag[i - 1], *trag[i], fill="blue", tags="lopta")
-
-    canvas.create_oval(x_px - r_px, y_px - r_px, x_px + r_px, y_px + r_px, fill="red", tags="lopta")
-
+    
+    # Nastavak animacije
     root.after(int(1000 * dt_osnovni), run_simulacija)
 
 root.mainloop()
